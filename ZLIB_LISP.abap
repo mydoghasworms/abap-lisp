@@ -305,12 +305,7 @@
 * TODO: Could incorporate this logic directly before evaluation a proc/lambda
 * and do away with this method
        methods: eval_err importing message type string
-         raising lcx_lisp_eval_err,
-                eval_list_copy importing
-                  environment type ref to lcl_lisp_environment
-                  element type ref to lcl_lisp_element
-                  returning value(evallist) type ref to lcl_lisp_element
-                  raising lcx_lisp_eval_err.
+         raising lcx_lisp_eval_err.
 
    endclass.                    "lcl_lisp_interpreter DEFINITION
 
@@ -569,7 +564,33 @@
 
 * Before execution of the procedure or lambda, all parameters must be evaluated
              data: lr_args type ref to lcl_lisp_element. "Argument
-             lr_args = eval_list_copy( element = lr_tail environment = environment ).
+             data: lr_arg_source type ref to lcl_lisp_element.
+             data: lr_arg_target type ref to lcl_lisp_element.
+
+             if lr_tail->car = nil.
+               lr_args = nil.
+             else.
+               create object lr_args
+                 exporting
+                   type = lcl_lisp_element=>type_conscell.
+               lr_arg_source = lr_tail.
+               lr_arg_target = lr_args.
+
+               do.
+                 lr_arg_target->car = eval( element = lr_arg_source->car environment = environment ).
+
+                 if lr_arg_source->cdr = nil.
+                   lr_arg_target->cdr = nil.
+                   exit.
+                 endif.
+                 lr_arg_source = lr_arg_source->cdr.
+                 create object lr_arg_target->cdr
+                   exporting
+                     type = lcl_lisp_element=>type_conscell.
+                 lr_arg_target = lr_arg_target->cdr.
+               enddo.
+
+             endif.
 
 ***--- NATIVE FUNCTION
              if lr_head->type = lcl_lisp_element=>type_native.
@@ -897,35 +918,5 @@
          endif.
        endif.
      endmethod.                    "proc_equal
-
-* Convenience method to eval the first level of items in a list
-* which makes a copy and leaves the original list untouched
-     method eval_list_copy.
-       if element->car = nil.
-         evallist = nil.
-         return.
-       endif.
-       data: source type ref to lcl_lisp_element.
-       data: target type ref to lcl_lisp_element.
-       create object evallist
-         exporting
-           type = lcl_lisp_element=>type_conscell.
-       source = element.
-       target = evallist.
-
-       do.
-         target->car = eval( element = source->car environment = environment ).
-
-         if source->cdr = nil.
-           target->cdr = nil.
-           exit.
-         endif.
-         source = source->cdr.
-         create object target->cdr
-           exporting
-             type = lcl_lisp_element=>type_conscell.
-         target = target->cdr.
-       enddo.
-     endmethod.                    "eval_list
 
    endclass.                    "lcl_lisp_interpreter IMPLEMENTATION
