@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta http-equiv="content-type" content="text/html; charset=utf-8">
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+    <title>Editor</title>
+    <style type="text/css" media="screen">
+        body {
+            overflow: hidden;
+            font-family: arial
+        }
+
+        #toolbar {
+            height: 30px;
+            margin: 0;
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            left: 0;
+            right: 0;
+        }
+
+        #toolbar > a {
+            background-color: #f8f8ff;
+            position: relative;
+            margin: 10px;
+        }
+
+        #editor {
+            margin: 0;
+            position: absolute;
+            top: 30px;
+            bottom: 0;
+            left: 0;
+            right: 0;
+        }
+    </style>
+</head>
+<body>
+<div>
+    <div id="toolbar">
+        <a alt="Evaluate Editor Contents" href="sapevent:evaluate"><img src="okay.gif"/></a>
+        <a alt="Evaluate Editor Contents" href="#" onclick="sapevent('save', editor.getValue());"><img src="okay.gif"/></a>
+    </div>
+    <pre id="editor"></pre>
+</div>
+<script src="ace.js" type="text/javascript" charset="utf-8"></script>
+<script> var editor = ace.edit("editor");
+editor.setTheme("ace/theme/github");
+editor.getSession().setMode("ace/mode/scheme"); </script>
+<form id="postForm" action="sapevent:abc" method="post"><input type="hidden" id="postdata" name="postdata"/></form>
+<script>function sapevent(event, data) {
+    var postForm = document.getElementById("postForm");
+    // Split data into chunks, as anything > 512 short dumps from CL_GUI_HTML_VIEWER
+    var e64b = window.btoa(data);
+    var datatab = e64b.match(/(.|[\r\n]){1,510}/g);
+    postForm.innerHTML = "";
+    for (i = 0; i < datatab.length; i++) {
+        var tagID = "data" + i;
+        postForm.innerHTML += '<input type="hidden" id="' + tagID + '" name="' + tagID + '"/>';
+        var input = document.getElementById(tagID);
+        input.value = '"' + datatab[i] + '"';
+    }
+    postForm.submit();
+}</script>
+</body>
+</html>
