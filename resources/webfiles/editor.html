@@ -40,8 +40,8 @@
 <body>
 <div>
     <div id="toolbar">
-        <a alt="Evaluate Editor Contents" href="sapevent:evaluate"><img src="okay.gif"/></a>
-        <a alt="Evaluate Editor Contents" href="#" onclick="sapevent('save', editor.getValue());"><img src="okay.gif"/></a>
+        <a alt="Evaluate Editor Contents" href="#" onclick="sapevent('eval', editor.getValue());"><img src="okay.gif"/></a>
+        <a alt="Save" href="#" onclick="sapevent('save', editor.getValue());"><img src="okay.gif"/></a>
     </div>
     <pre id="editor"></pre>
 </div>

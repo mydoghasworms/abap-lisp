@@ -92,10 +92,16 @@ endform.                    "print_element
 form parse_test using code type string.
   write: / '<-', code.
   write: / '>-'.
-  data: cell type ref to lcl_lisp_element.
-  cell = lr_int->parse( code ).
+  data: element type ref to lcl_lisp_element.
+  data: elements type lcl_lisp_interpreter=>tt_element.
+  elements = lr_int->parse( code ).
+  read table elements into element index 1.
+  if sy-subrc ne 0.
+    write: / 'No evaluated element from first expression'.
+    return.
+  endif.
   print_offset = 1.
-  perform print_element using cell.
+  perform print_element using element.
   uline.
 endform.                    "parse_test
 
@@ -133,6 +139,15 @@ start-of-selection.
 * Test quote
     perform code_test using '(quote 19)'.
     perform code_test using '(quote a)'.
+
+* Test strings
+*    perform code_test using '"string value"'.
+*    perform code_test using '"string value with \" escaped double quote"'.
+*    perform code_test using '(quote "string value with \" escaped double quote")'.
+
+* Evaluating multiple expressions
+    perform code_test using '(define a (list 1 2 3 4)) (define b (cdr a)) a b'.
+
   endif.
 
   if p_maths = abap_true.

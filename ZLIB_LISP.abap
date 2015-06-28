@@ -117,6 +117,7 @@
        types: tv_type type char1.
        class-data: type_symbol     type tv_type value 'S'.
        class-data: type_number     type tv_type value 'N'.
+       class-data: type_string     type tv_type value '"'.
        class-data: type_conscell   type tv_type value 'C'.
        class-data: type_lambda     type tv_type value 'λ'.
        class-data: type_native     type tv_type value 'P'.
@@ -238,6 +239,8 @@
        data: char type char1.
        data: env type ref to lcl_lisp_environment. "Global environment
 
+       types: tt_element type standard table of ref to lcl_lisp_element with default key.
+
        methods:
             constructor,
             next_char raising lcx_lisp_parse_err,
@@ -250,7 +253,7 @@
               raising lcx_lisp_parse_err,
             parse
               importing code type clike
-              returning value(cell) type  ref to lcl_lisp_element
+              returning value(elements) type tt_element
               raising lcx_lisp_parse_err.
 
 * Methods for evaluation
@@ -401,11 +404,28 @@
 
      method parse_token.
        skip_whitespace( ).
+       data: sval type string.
        "create object cell.
        if char = '('.
          element = parse_list( ).
+       elseif char = '"'.
+         data: pchar type char1.
+         next_char( ). "Skip past opening quote
+         while index < length.
+           sval = |{ sval }{ char }|.
+           if char = '"' and pchar ne '\'.
+             exit.
+           endif.
+           pchar = char.
+           next_char( ).
+         endwhile.
+         next_char( ). "Skip past closing quote
+         create object element
+           exporting
+             type = lcl_lisp_element=>type_string.
+         element->value = sval.
+         return.
        else.
-         data: sval type string.
 * Run to delimiter
          while index < length.
            sval = |{ sval }{ char }|.
@@ -442,20 +462,24 @@
 * Entry point for parsing code. This is not thread-safe, but as an ABAP
 * process does not have the concept of threads, we are safe :-)
      method parse.
+       data: element type ref to lcl_lisp_element.
        me->code = code.
        length = strlen( code ).
        if length = 0.
-         cell = nil.
+         append nil to elements.
          return.
        endif.
        index = 0.
        char = code+index(1). "Kick off things by reading first char
-       skip_whitespace( ).
-       if char = '('.
-         cell = parse_list( ).
-       else.
-         cell = parse_token( ).
-       endif.
+       while index < length.
+         skip_whitespace( ).
+         if char = '('.
+           element = parse_list( ).
+         else.
+           element = parse_token( ).
+         endif.
+         append element to elements.
+       endwhile.
      endmethod.                    "parse
 
 **********************************************************************
@@ -689,11 +713,15 @@
 
      method eval_source.
        data: lr_err type ref to lcx_lisp_exception.
-       data: lr_result type ref to lcl_lisp_element.
+       data: lr_element type ref to lcl_lisp_element.
+       data: lt_element type lcl_lisp_interpreter=>tt_element.
        data: lx_root type ref to cx_root.
        try.
-           lr_result = eval( element = parse( code ) environment = env ).
-           response = to_string( lr_result ).
+           lt_element = parse( code ).
+           loop at lt_element into lr_element.
+             lr_element = eval( element = lr_element environment = env ).
+             response = |{ response } { to_string( lr_element ) }|.
+           endloop.
          catch lcx_lisp_parse_err into lr_err.
            response = |Parse: { lr_err->message }|.
          catch lcx_lisp_eval_err into lr_err.
@@ -754,6 +782,10 @@
        if list->cdr = nil and list->car = nil.
          result = nil. return.
        endif.
+* TODO: Check for incorrect number of arguments
+*       if list->cdr->type ne lcl_lisp_element=>type_conscell.
+*         eval_err( |Argument to CDR must be a pair| ).
+*       endif.
        result = list->car->cdr.
 *       result = list->cdr.
        if result is not bound.
