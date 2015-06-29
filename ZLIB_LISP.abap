@@ -412,10 +412,11 @@
          data: pchar type char1.
          next_char( ). "Skip past opening quote
          while index < length.
-           sval = |{ sval }{ char }|.
            if char = '"' and pchar ne '\'.
              exit.
            endif.
+           concatenate sval char into sval respecting blanks.
+*           sval = |{ sval }{ char }|.
            pchar = char.
            next_char( ).
          endwhile.
@@ -494,8 +495,8 @@
        if element = true. result = true. return. endif.
 
        case element->type.
-         when lcl_lisp_element=>type_number.
-           result = element.  "Number evaluates to itself
+         when lcl_lisp_element=>type_number or lcl_lisp_element=>type_string.
+           result = element.  "Number or string evaluates to itself
          when lcl_lisp_element=>type_symbol. "Symbol
            result = environment->find( element->value ). "Look up symbol in environment
 
@@ -685,7 +686,8 @@
        case element->type.
          when lcl_lisp_element=>type_lambda.
            str = '<lambda>'.
-         when lcl_lisp_element=>type_symbol.
+* TODO: Other Lisp REPLs give back the string as a quoted string
+         when lcl_lisp_element=>type_symbol or lcl_lisp_element=>type_string.
            str = element->value.
          when lcl_lisp_element=>type_number.
            str = element->number.
