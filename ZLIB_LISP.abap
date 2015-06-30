@@ -328,6 +328,7 @@
        proc_gte,      ##called
        proc_lt,       ##called
        proc_lte,      ##called
+       proc_eql,      ##called
 * Not in the spec: Just adding it anyway
        proc_equal.    ##called
 
@@ -379,6 +380,7 @@
        env->define_value( symbol = '>='     type = lcl_lisp_element=>type_native value   = 'PROC_GTE' ).
        env->define_value( symbol = '<'      type = lcl_lisp_element=>type_native value   = 'PROC_LT' ).
        env->define_value( symbol = '<='     type = lcl_lisp_element=>type_native value   = 'PROC_LTE' ).
+       env->define_value( symbol = '='      type = lcl_lisp_element=>type_native value   = 'PROC_EQL' ). "Math equal
        env->define_value( symbol = 'equal?' type = lcl_lisp_element=>type_native value   = 'PROC_EQUAL' ).
 
 * Native functions for ABAP integration
@@ -453,10 +455,16 @@
        elseif char = ''''. "Quoted element
 * ' is just a shortcut for QUOTE, so we wrap the consecutive element in a list starting with the quote symbol
 * so that when it is evaluated later, it returns the quote elements unmodified
-         create object element exporting type = lcl_lisp_element=>type_conscell.
-         create object element->car exporting type = lcl_lisp_element=>type_symbol.
+         create object element
+           exporting
+             type = lcl_lisp_element=>type_conscell.
+         create object element->car
+           exporting
+             type = lcl_lisp_element=>type_symbol.
          element->car->value = 'quote'.
-         create object element->cdr exporting type = lcl_lisp_element=>type_conscell.
+         create object element->cdr
+           exporting
+             type = lcl_lisp_element=>type_conscell.
          element->cdr->cdr = nil.
          next_char( ). "Skip past single quote
          element->cdr->car = parse_token( ).
@@ -580,19 +588,40 @@
                endif.
              endif.
 
-*           elseif lr_head->value = 'set!'.
-
 *--- DEFINE
            elseif lr_head->value = 'define'.
-             if lr_tail->car->type ne lcl_lisp_element=>type_symbol.
-               eval_err( |non-symbol { lr_tail->car->value } cannot be a variable| ).
+*             if lr_tail->car->type ne lcl_lisp_element=>type_symbol.
+*               eval_err( |non-symbol { lr_tail->car->value } cannot be a variable| ).
+*             endif.
+* Assign symbol
+             if lr_tail->car->type = lcl_lisp_element=>type_symbol.
+               environment->define( symbol  = lr_tail->car->value
+                 element = eval( element = lr_tail->cdr->car environment = environment ) ).
+               create object result
+                 exporting
+                   type = lcl_lisp_element=>type_symbol.
+               result->value = lr_tail->car->value.
+* Function shorthand (define (id arg ... ) body ...+)
+             elseif lr_tail->car->type = lcl_lisp_element=>type_conscell.
+* define's function shorthand allows us to define a function by specifying a list as the
+* first argument where the first element is a symbol and consecutive elements are arguments
+               create object result
+                 exporting
+                   type = lcl_lisp_element=>type_lambda.
+               result->car = lr_tail->car->cdr. "List of params following function symbol
+               result->cdr = lr_tail->cdr->car.
+               result->environment = environment.
+* Add function to the environment with symbol
+               environment->define( symbol  = lr_tail->car->car->value
+                 element = result ).
+* TODO: Here and above: Scheme does not return a value for define; should we?
+               create object result
+                 exporting
+                   type = lcl_lisp_element=>type_symbol.
+               result->value = lr_tail->car->car->value.
+             else.
+               eval_err( |{ to_string( lr_tail->car ) } cannot be a variable identifier| ).
              endif.
-             environment->define( symbol  = lr_tail->car->value
-               element = eval( element = lr_tail->cdr->car environment = environment ) ).
-             create object result
-               exporting
-                 type = lcl_lisp_element=>type_symbol.
-             result->value = lr_tail->car->value.
 
 *--- LAMBDA
            elseif lr_head->value = 'lambda'.
@@ -767,7 +796,7 @@
            lt_element = parse( code ).
            loop at lt_element into lr_element.
              lr_element = eval( element = lr_element environment = env ).
-             response = |{ response } { to_string( lr_element ) }|.
+             response = |{ response }{ to_string( lr_element ) } |.
            endloop.
          catch lcx_lisp_parse_err into lr_err.
            response = |Parse: { lr_err->message }|.
@@ -979,6 +1008,15 @@
      method proc_lte.
        _comparison >.
      endmethod.                    "proc_lte
+     method proc_eql.
+       if list->car->type = lcl_lisp_element=>type_number and
+          list->cdr->car->type = lcl_lisp_element=>type_number and
+          list->car->number = list->cdr->car->number.
+         result = true.
+       else.
+         result = nil.
+       endif.
+     endmethod.                    "proc_eql
 **********************************************************************
      method proc_equal.
        result = nil.
