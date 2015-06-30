@@ -121,10 +121,17 @@
        class-data: type_conscell   type tv_type value 'C'.
        class-data: type_lambda     type tv_type value 'λ'.
        class-data: type_native     type tv_type value 'P'.
+* Types for ABAP integration:
+       class-data: type_abap_data     type tv_type value 'D'.
+       class-data: type_abap_table    type tv_type value 'T'.
+       class-data: type_abap_function type tv_type value 'F'.
+       class-data: type_abap_class    type tv_type value 'R'.
 
        data: type type char1.
        data: value type string.
        data: number type decfloat34.
+* For ABAP integration
+       data: data type ref to data.
 
 * Specifically for cons cells:
        data: car type ref to lcl_lisp_element. "Contents of Address portion of Register
@@ -136,6 +143,36 @@
        methods: constructor importing type type tv_type.
 
    endclass.                    "lcl_lisp_element DEFINITION
+
+*----------------------------------------------------------------------*
+*       CLASS lcl_lisp_abapfunction DEFINITION
+*----------------------------------------------------------------------*
+* Specialized element representing an ABAP function module that can
+* be called
+*----------------------------------------------------------------------*
+   class lcl_lisp_abapfunction definition inheriting from lcl_lisp_element.
+     public section.
+       data: parameters type abap_func_parmbind_tab.
+       data: exceptions type abap_func_excpbind_tab.
+
+       class-methods:
+         data_to_element importing value(data) type any
+                         returning value(element) type ref to lcl_lisp_element,
+         element_to_data importing value(element) type ref to lcl_lisp_element
+                         returning value(data) type ref to data.
+   endclass.                    "lcl_lisp_abapfunction DEFINITION
+
+*----------------------------------------------------------------------*
+*       CLASS lcl_lisp_abapfunction IMPLEMENTATION
+*----------------------------------------------------------------------*
+*
+*----------------------------------------------------------------------*
+   class lcl_lisp_abapfunction implementation.
+     method data_to_element.
+     endmethod.                    "data_to_element
+     method element_to_data.
+     endmethod.                    "element_to_data
+   endclass.                    "lcl_lisp_abapfunction IMPLEMENTATION
 
 *----------------------------------------------------------------------*
 *       CLASS lcl_lisp_element IMPLEMENTATION
@@ -294,16 +331,16 @@
 * Not in the spec: Just adding it anyway
        proc_equal.    ##called
 
+* Built-in functions for ABAP integration:
+       _proc_meth:
+       proc_abap_data,          ##called
+       proc_abap_function,      ##called
+       proc_abap_function_call. ##called
+
 * true, false and nil
        data: nil type ref to   lcl_lisp_element read-only.
        data: true type ref to  lcl_lisp_element read-only.
 *       data: false type ref to lcl_lisp_element read-only.
-
-       data: begin of debug,
-               active type boole_d,
-               stack_level type i,
-               eval type string,
-             end of debug.
 
      protected section.
 * TODO: Could incorporate this logic directly before evaluation a proc/lambda
@@ -343,6 +380,11 @@
        env->define_value( symbol = '<'      type = lcl_lisp_element=>type_native value   = 'PROC_LT' ).
        env->define_value( symbol = '<='     type = lcl_lisp_element=>type_native value   = 'PROC_LTE' ).
        env->define_value( symbol = 'equal?' type = lcl_lisp_element=>type_native value   = 'PROC_EQUAL' ).
+
+* Native functions for ABAP integration
+       env->define_value( symbol = 'abap-data'          type = lcl_lisp_element=>type_native value   = 'PROC_ABAP_DATA' ).
+       env->define_value( symbol = 'abap-function'      type = lcl_lisp_element=>type_native value   = 'PROC_ABAP_FUNCTION' ).
+
      endmethod.                    "constructor
 
 *--------------------------------------------------------------------*
@@ -408,6 +450,16 @@
        "create object cell.
        if char = '('.
          element = parse_list( ).
+       elseif char = ''''. "Quoted element
+* ' is just a shortcut for QUOTE, so we wrap the consecutive element in a list starting with the quote symbol
+* so that when it is evaluated later, it returns the quote elements unmodified
+         create object element exporting type = lcl_lisp_element=>type_conscell.
+         create object element->car exporting type = lcl_lisp_element=>type_symbol.
+         element->car->value = 'quote'.
+         create object element->cdr exporting type = lcl_lisp_element=>type_conscell.
+         element->cdr->cdr = nil.
+         next_char( ). "Skip past single quote
+         element->cdr->car = parse_token( ).
        elseif char = '"'.
          data: pchar type char1.
          next_char( ). "Skip past opening quote
@@ -575,25 +627,13 @@
 * The evaluated head must be either a native procedure or lambda
              lr_head = eval( element = element->car environment = environment ).
 
-* DEBUGGING
-             if debug-active = abap_true.
-               add 1 to debug-stack_level.
-               new-line.
-               do debug-stack_level times.
-                 write: ' >'.
-               enddo.
-               debug-eval = to_string( lr_head ).
-               write: debug-eval, lr_head->value.
-               debug-eval = to_string( lr_tail ).
-               write: debug-eval.
-             endif.
-
 * Before execution of the procedure or lambda, all parameters must be evaluated
              data: lr_args type ref to lcl_lisp_element. "Argument
              data: lr_arg_source type ref to lcl_lisp_element.
              data: lr_arg_target type ref to lcl_lisp_element.
 
-             if lr_tail->car = nil.
+* TODO: Need to review whether the way I am evaluating the tail is correct...
+             if lr_tail = nil or lr_tail->car = nil.
                lr_args = nil.
              else.
                create object lr_args
@@ -659,19 +699,20 @@
 * Evaluate lambda
                result = eval( element = lr_head->cdr environment = lr_env ).
 
+* >>> TEST: Support evaluation of ABAP function directly
+             elseif lr_head->type = lcl_lisp_element=>type_abap_function.
+* Recompose as if calling a PROC (which we are). This is part of the test. If we make an ABAP function
+* call first-class, then we would need to revisit evaluating the whole of ELEMENT in one shot
+               data: lr_funcinput type ref to lcl_lisp_element.
+               create object lr_funcinput
+                 exporting
+                   type = lcl_lisp_element=>type_conscell.
+               lr_funcinput->car = lr_head.
+               lr_funcinput->cdr = lr_tail.
+               result = proc_abap_function_call( lr_funcinput ).
+* <<< TEST
              else.
                eval_err( |Cannot evaluate { to_string( lr_head ) } - not a function| ).
-             endif.
-
-* DEBUGGING
-             if debug-active = abap_true.
-               new-line.
-               do debug-stack_level times.
-                 write: ' <'.
-               enddo.
-               debug-eval = to_string( result ).
-               write: debug-eval.
-               subtract 1 from debug-stack_level.
              endif.
 
            endif.
@@ -710,6 +751,10 @@
              lr_elem = lr_elem->cdr. "Next element in list
            enddo.
            str = |{ str } )|. "Closing paren
+*--------------------------------------------------------------------*
+* Additions for ABAP Types:
+         when lcl_lisp_element=>type_abap_function.
+           str = |<ABAP function module { element->value }>|.
        endcase.
      endmethod.                    "to_string
 
@@ -954,4 +999,160 @@
        endif.
      endmethod.                    "proc_equal
 
+**********************************************************************
+*       _                   _           _ _ _        _
+*  __ _| |__   __ _ _ __   | |__  _   _(_) | |_     (_)_ __  ___
+* / _` | '_ \ / _` | '_ \  | '_ \| | | | | | __|____| | '_ \/ __|
+*| (_| | |_) | (_| | |_) | | |_) | |_| | | | ||_____| | | | \__ \
+* \__,_|_.__/ \__,_| .__/  |_.__/ \__,_|_|_|\__|    |_|_| |_|___/
+*                  |_|
+**********************************************************************
+
+     method proc_abap_data.
+* First input: name of data type, second input: value
+       create object result
+         exporting
+           type = lcl_lisp_element=>type_abap_data.
+       create data result->data type (list->car->value).
+* Set value if supplied as second parameter
+       field-symbols: <value> type any.
+       if list->cdr ne nil.
+         assign result->data->* to <value>.
+         if list->cdr->car->type = lcl_lisp_element=>type_number.
+           <value> = list->cdr->car->number.
+         else.
+           <value> = list->cdr->car->value.
+         endif.
+       endif.
+     endmethod.                    "proc_abap_data
+     method proc_abap_function.
+
+       data: function type ref to lcl_lisp_abapfunction.
+       data: function_name type rs38l-name.
+
+       create object function
+         exporting
+           type = lcl_lisp_element=>type_abap_function.
+
+       function->value = list->car->value. "Name of function module
+       function_name = list->car->value.
+
+* Determine the parameters of the function module to populate parameter table
+* TODO: At the moment, we do not support reference types in function module interfaces
+       data: ls_par type abap_func_parmbind.
+       data: ls_exc type abap_func_excpbind.
+
+       data: lt_desc_exc type table of rsexc.
+       data: lt_desc_exp type table of rsexp.
+       data: lt_desc_imp type table of rsimp.
+       data: lt_desc_cha type table of rscha.
+       data: lt_desc_tab type table of rstbl.
+       data: ls_desc_exc type rsexc.
+       data: ls_desc_exp type rsexp.
+       data: ls_desc_imp type rsimp.
+       data: ls_desc_cha type rscha.
+       data: ls_desc_tab type rstbl.
+
+* Read the function module interface
+       call function 'FUNCTION_IMPORT_INTERFACE'
+         exporting
+           funcname           = function_name
+         tables
+           exception_list     = lt_desc_exc
+           export_parameter   = lt_desc_exp
+           import_parameter   = lt_desc_imp
+           changing_parameter = lt_desc_cha
+           tables_parameter   = lt_desc_tab
+         exceptions
+           error_message      = 1
+           function_not_found = 2
+           invalid_name       = 3
+           others             = 4.
+       if sy-subrc <> 0.
+         eval_err( |Could not get function interface of { function->value } ({ sy-subrc })| ).
+       endif.
+
+* Create structures in parameter tables
+* TABLES
+       loop at lt_desc_tab into ls_desc_tab.
+         clear ls_par.
+         ls_par-kind = abap_func_tables.
+         ls_par-name = ls_desc_tab-parameter.
+         if ls_desc_tab-typ is initial.
+           create data ls_par-value type table of (ls_desc_tab-dbstruct).
+           create data ls_par-tables_wa type (ls_desc_tab-dbstruct).
+         else.
+           create data ls_par-value type table of (ls_desc_tab-typ).
+           create data ls_par-tables_wa type (ls_desc_tab-typ).
+         endif.
+         insert ls_par into table function->parameters.
+       endloop.
+* IMPORT
+       loop at lt_desc_imp into ls_desc_imp.
+         clear ls_par.
+         ls_par-kind = abap_func_exporting.
+         ls_par-name = ls_desc_imp-parameter.
+         if ls_desc_imp-dbfield is not initial.
+           create data ls_par-value type (ls_desc_imp-dbfield).
+         elseif ls_desc_imp-typ is not initial.
+           create data ls_par-value type (ls_desc_imp-typ).
+         else.
+           create data ls_par-value type text100. "Fallback for untyped parameters
+         endif.
+         insert ls_par into table function->parameters.
+       endloop.
+* EXPORT
+       loop at lt_desc_exp into ls_desc_exp.
+         clear ls_par.
+         ls_par-kind = abap_func_importing.
+         ls_par-name = ls_desc_exp-parameter.
+         if ls_desc_exp-dbfield is not initial.
+           create data ls_par-value type (ls_desc_exp-dbfield).
+         elseif ls_desc_exp-typ is not initial.
+           create data ls_par-value type (ls_desc_exp-typ).
+         else.
+           create data ls_par-value type text100. "Fallback for untyped parameters
+         endif.
+         insert ls_par into table function->parameters.
+       endloop.
+* CHANGING
+       loop at lt_desc_cha into ls_desc_cha.
+         clear ls_par.
+         ls_par-kind = abap_func_changing.
+         ls_par-name = ls_desc_cha-parameter.
+         if ls_desc_cha-dbfield is not initial.
+           create data ls_par-value type (ls_desc_cha-dbfield).
+         elseif ls_desc_cha-typ is not initial.
+           create data ls_par-value type (ls_desc_cha-typ).
+         else.
+           create data ls_par-value type text100. "Fallback for untyped parameters
+         endif.
+         insert ls_par into table function->parameters.
+       endloop.
+
+       result = function.
+
+     endmethod.                    "proc_abap_function
+     method proc_abap_function_call.
+
+       data: lr_func type ref to lcl_lisp_abapfunction.
+
+* The first parameter must be a function module instance
+       if list->car->type ne lcl_lisp_element=>type_abap_function.
+         eval_err( |{ list->car->value } is not a function module reference| ).
+       endif.
+       lr_func ?= list->car.
+
+* Map given list to parameters of function module
+
+* First parameter: Name of function to call; second parameter: data to pass to interface
+       call function list->car->value
+         parameter-table lr_func->parameters
+         exception-table lr_func->exceptions.
+
+* Map output parameters to new list
+
+       result = list->car. "Function reference is updated with values after call
+
+     endmethod.                    "proc_abap_function_call
    endclass.                    "lcl_lisp_interpreter IMPLEMENTATION

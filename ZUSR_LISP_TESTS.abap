@@ -46,6 +46,7 @@ parameter: p_compa as checkbox default space. "Comparison tests
 parameter: p_listp as checkbox default space. "List tests
 parameter: p_func1 as checkbox default space. "Basic functions
 parameter: p_funct as checkbox default space. "Functional tests
+parameter: p_abapf as checkbox default space. "ABAP function module integration tests
 
 *&---------------------------------------------------------------------*
 *&      Form  code_test
@@ -139,11 +140,14 @@ start-of-selection.
 * Test quote
     perform code_test using '(quote 19)'.
     perform code_test using '(quote a)'.
+    perform code_test using '''19'.
+    perform code_test using '''a'.
+    perform code_test using '''(list 1 2 3)'.
 
 * Test strings
-*    perform code_test using '"string value"'.
-*    perform code_test using '"string value with \" escaped double quote"'.
-*    perform code_test using '(quote "string value with \" escaped double quote")'.
+    perform code_test using '"string value"'.
+    perform code_test using '"string value with \" escaped double quote"'.
+    perform code_test using '(quote "string value with \" escaped double quote")'.
 
 * Evaluating multiple expressions
     perform code_test using '(define a (list 1 2 3 4)) (define b (cdr a)) a b'.
@@ -283,9 +287,16 @@ start-of-selection.
       ')))' .
     perform code_test using code.
 
-*    lr_int->debug-active = abap_true.
     perform code_test using '(riff-shuffle (list 1 2 3 4 5 6 7 8))'.
     perform code_test using '((repeat riff-shuffle) (list 1 2 3 4 5 6 7 8))'.
     perform code_test using '(riff-shuffle (riff-shuffle (riff-shuffle (list 1 2 3 4 5 6 7 8))))'.
 
+  endif.
+
+*--------------------------------------------------------------------*
+* ABAP INTEGRATION
+  if p_abapf = abap_true.
+    perform code_test using '(abap-function "TH_USER_INFO")'.
+    perform code_test using '(define f1 (abap-function "TH_USER_INFO"))'.
+    perform code_test using '(f1)'.
   endif.
