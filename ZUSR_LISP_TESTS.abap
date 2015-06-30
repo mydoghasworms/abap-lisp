@@ -144,6 +144,11 @@ start-of-selection.
     perform code_test using '''a'.
     perform code_test using '''(list 1 2 3)'.
 
+* Test DEFINE
+    perform code_test using '(define 22 23)'. "Err
+    perform code_test using '(define a 23)'.
+    perform code_test using 'a'. "Err
+
 * Test strings
     perform code_test using '"string value"'.
     perform code_test using '"string value with \" escaped double quote"'.
@@ -237,10 +242,9 @@ start-of-selection.
     perform code_test using '(if (< 2 1) 23)'.
     perform code_test using '(if (< 2 1) 23 24)'.
 
-* Test DEFINE
-    perform code_test using '(define 22 23)'. "Err
-    perform code_test using '(define a 23)'. "Err
-    perform code_test using 'a'. "Err
+* Test =
+    perform code_test using '(= 2 3)'.
+    perform code_test using '(= 3 3)'.
 
 * Test nil?
     perform code_test using '(nil? ())'.
@@ -259,6 +263,9 @@ start-of-selection.
     perform code_test using 'b'.
     perform code_test using '(b 20)'.
     perform code_test using '((lambda (a) (+ a 20)) 10 )'.
+* Function shorthand
+    perform code_test using '(define (fact x) (if (= x 0) 1 (* x (fact (- x 1)))))'.
+    perform code_test using '(fact 8)'.
 
   endif.
 
