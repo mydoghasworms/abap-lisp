@@ -154,12 +154,6 @@
      public section.
        data: parameters type abap_func_parmbind_tab.
        data: exceptions type abap_func_excpbind_tab.
-
-       class-methods:
-         data_to_element importing value(data) type any
-                         returning value(element) type ref to lcl_lisp_element,
-         element_to_data importing value(element) type ref to lcl_lisp_element
-                         returning value(data) type ref to data.
    endclass.                    "lcl_lisp_abapfunction DEFINITION
 
 *----------------------------------------------------------------------*
@@ -168,10 +162,7 @@
 *
 *----------------------------------------------------------------------*
    class lcl_lisp_abapfunction implementation.
-     method data_to_element.
-     endmethod.                    "data_to_element
-     method element_to_data.
-     endmethod.                    "element_to_data
+
    endclass.                    "lcl_lisp_abapfunction IMPLEMENTATION
 
 *----------------------------------------------------------------------*
@@ -250,7 +241,12 @@
        else.
          ls_map-value->value = value.
        endif.
+* TODO: reuse DEFINE() here
        insert ls_map into table map.
+* To comply with Scheme define, overwrite existing defined values
+       if sy-subrc = 4.
+         modify table map from ls_map.
+       endif.
        element = ls_map-value.
      endmethod.                    "define_cell
 
@@ -259,6 +255,10 @@
        ls_map-symbol = symbol.
        ls_map-value = element.
        insert ls_map into table map.
+* To comply with Scheme define, overwrite existing defined values
+       if sy-subrc = 4.
+         modify table map from ls_map.
+       endif.
      endmethod.                    "define
 
    endclass.                    "lcl_lisp_environment IMPLEMENTATION
@@ -336,18 +336,34 @@
        _proc_meth:
        proc_abap_data,          ##called
        proc_abap_function,      ##called
+       proc_abap_table,         ##called
+       proc_abap_append_row,    ##called
+       proc_abap_delete_row,    ##called
+       proc_abap_get_row,       ##called
+       proc_abap_get_value,     ##called
+       proc_abap_set_value,     ##called
+* Called internally only:
        proc_abap_function_call. ##called
 
 * true, false and nil
-       data: nil type ref to   lcl_lisp_element read-only.
-       data: true type ref to  lcl_lisp_element read-only.
+       class-data: nil type ref to   lcl_lisp_element read-only.
+       class-data: true type ref to  lcl_lisp_element read-only.
 *       data: false type ref to lcl_lisp_element read-only.
 
      protected section.
 * TODO: Could incorporate this logic directly before evaluation a proc/lambda
 * and do away with this method
-       methods: eval_err importing message type string
+       class-methods: eval_err importing message type string
          raising lcx_lisp_eval_err.
+
+*---- ABAP Integration support functions; mapping -----
+       class-methods:
+         data_to_element importing value(data) type any
+                         returning value(element) type ref to lcl_lisp_element
+                         raising lcx_lisp_eval_err,
+         element_to_data importing value(element) type ref to lcl_lisp_element
+                         changing value(data) type any "ref to data
+                         raising lcx_lisp_eval_err.
 
    endclass.                    "lcl_lisp_interpreter DEFINITION
 
@@ -384,8 +400,14 @@
        env->define_value( symbol = 'equal?' type = lcl_lisp_element=>type_native value   = 'PROC_EQUAL' ).
 
 * Native functions for ABAP integration
-       env->define_value( symbol = 'abap-data'          type = lcl_lisp_element=>type_native value   = 'PROC_ABAP_DATA' ).
-       env->define_value( symbol = 'abap-function'      type = lcl_lisp_element=>type_native value   = 'PROC_ABAP_FUNCTION' ).
+       env->define_value( symbol = 'ab-data'       type = lcl_lisp_element=>type_native value   = 'PROC_ABAP_DATA' ).
+       env->define_value( symbol = 'ab-function'   type = lcl_lisp_element=>type_native value   = 'PROC_ABAP_FUNCTION' ).
+       env->define_value( symbol = 'ab-table'      type = lcl_lisp_element=>type_native value   = 'PROC_ABAP_TABLE' ).
+       env->define_value( symbol = 'ab-append-row' type = lcl_lisp_element=>type_native value   = 'PROC_ABAP_APPEND_ROW' ).
+       env->define_value( symbol = 'ab-delete-row' type = lcl_lisp_element=>type_native value   = 'PROC_ABAP_DELETE_ROW' ).
+       env->define_value( symbol = 'ab-get-row'    type = lcl_lisp_element=>type_native value   = 'PROC_ABAP_GET_ROW' ).
+       env->define_value( symbol = 'ab-get-value'  type = lcl_lisp_element=>type_native value   = 'PROC_ABAP_GET_VALUE' ).
+       env->define_value( symbol = 'ab-set-value'  type = lcl_lisp_element=>type_native value   = 'PROC_ABAP_SET_VALUE' ).
 
      endmethod.                    "constructor
 
@@ -784,6 +806,12 @@
 * Additions for ABAP Types:
          when lcl_lisp_element=>type_abap_function.
            str = |<ABAP function module { element->value }>|.
+         when lcl_lisp_element=>type_abap_data.
+           str = |<ABAP Data>|.
+         when lcl_lisp_element=>type_abap_table.
+           str = |<ABAP Table>|.
+         when lcl_lisp_element=>type_abap_class.
+           str = |<ABAP Class>|.
        endcase.
      endmethod.                    "to_string
 
@@ -864,6 +892,7 @@
 *       endif.
        result = list->car->cdr.
 *       result = list->cdr.
+* FIXME: test (cdr 23); should result in error!
        if result is not bound.
          break-point.
        endif.
@@ -1053,16 +1082,15 @@
            type = lcl_lisp_element=>type_abap_data.
        create data result->data type (list->car->value).
 * Set value if supplied as second parameter
-       field-symbols: <value> type any.
        if list->cdr ne nil.
-         assign result->data->* to <value>.
-         if list->cdr->car->type = lcl_lisp_element=>type_number.
-           <value> = list->cdr->car->number.
-         else.
-           <value> = list->cdr->car->value.
-         endif.
+         call method element_to_data
+           exporting
+             element = list->cdr->car
+           changing
+             data    = result->data.
        endif.
      endmethod.                    "proc_abap_data
+**********************************************************************
      method proc_abap_function.
 
        data: function type ref to lcl_lisp_abapfunction.
@@ -1171,7 +1199,69 @@
        result = function.
 
      endmethod.                    "proc_abap_function
-     method proc_abap_function_call.
+**********************************************************************
+     method proc_abap_table. "Create a table data
+* First input: name of data type, second input: value
+       create object result
+         exporting
+           type = lcl_lisp_element=>type_abap_table.
+       create data result->data type table of (list->car->value).
+* Set value if supplied as second parameter
+       if list->cdr ne nil.
+         call method element_to_data
+           exporting
+             element = list->cdr->car
+           changing
+             data    = result->data.
+       endif.
+     endmethod.                    "proc_abap_table
+**********************************************************************
+     method proc_abap_append_row.
+     endmethod.                    "proc_abap_append_row
+**********************************************************************
+     method proc_abap_delete_row.
+     endmethod.                    "proc_abap_delete_row
+**********************************************************************
+     method proc_abap_get_row.
+
+     endmethod.                    "proc_abap_get_row
+**********************************************************************
+     method proc_abap_get_value. "Convert ABAP to Lisp data
+       data: lx_root type ref to cx_root.
+       field-symbols: <data> type any.
+       if list->car->type ne lcl_lisp_element=>type_abap_data and
+          list->car->type ne lcl_lisp_element=>type_abap_table.
+         eval_err( |AB-GET-VALUE requires ABAP data or table as parameter| ).
+       endif.
+       try.
+           assign list->car->data->* to <data>.
+           result = data_to_element( <data> ).
+         catch cx_root into lx_root.
+           eval_err( |Mapping error: { lx_root->get_text( ) }| ).
+       endtry.
+     endmethod.                    "proc_abap_get_value
+**********************************************************************
+     method proc_abap_set_value. "Convert Lisp to ABAP data
+       data: lx_root type ref to cx_root.
+       field-symbols: <data> type any.
+       if list->car->type ne lcl_lisp_element=>type_abap_data and
+          list->car->type ne lcl_lisp_element=>type_abap_table.
+         eval_err( |AB-SET-VALUE requires ABAP data or table as first parameter| ).
+       endif.
+       try.
+           assign list->car->data->* to <data>.
+           call method element_to_data
+             exporting
+               element = list->cdr->car
+             changing
+               data    = <data>.
+         catch cx_root into lx_root.
+           eval_err( |Mapping error: { lx_root->get_text( ) }| ).
+       endtry.
+       result = nil. "TODO: What should we return here?
+     endmethod.                    "proc_abap_set_value
+**********************************************************************
+     method proc_abap_function_call. "Called internally only for execution of function module
 
        data: lr_func type ref to lcl_lisp_abapfunction.
 
@@ -1193,4 +1283,196 @@
        result = list->car. "Function reference is updated with values after call
 
      endmethod.                    "proc_abap_function_call
+
+*--------------------------------------------------------------------*
+* Map ABAP Data to Lisp element
+     method data_to_element.
+* RTTI-relevant:
+       data: lr_ddesc type ref to cl_abap_typedescr.
+
+* ABAP-side (source) mapping:
+       field-symbols: <field> type any.
+       field-symbols: <line> type any.
+       field-symbols: <table> type any table.
+       field-symbols: <sotab> type sorted table.
+       field-symbols: <sttab> type standard table.
+       data: field type ref to data.
+       data: line type ref to data.
+       data: table type ref to data.
+* Lisp-side (target) mapping:
+       data: lr_conscell type ref to lcl_lisp_element.
+
+* Determine type of the ABAP value
+       lr_ddesc = cl_abap_typedescr=>describe_by_data( data ).
+       case lr_ddesc->kind.
+
+* Table type
+         when cl_abap_typedescr=>kind_table.
+           assign data to <table>.
+           create data line like line of <table>.
+           assign line->* to <line>.
+
+           if <table> is initial.
+             element = nil.
+           else.
+* Create list with cell for each row
+             create object element
+               exporting
+                 type = lcl_lisp_element=>type_conscell.
+             lr_conscell = element. "Set pointer to start of list
+             loop at <table> into <line>.
+               if sy-tabix > 1. "Move pointer only from second line onward
+                 create object lr_conscell->cdr
+                   exporting
+                     type = lcl_lisp_element=>type_conscell.
+                 lr_conscell = lr_conscell->cdr.
+               endif.
+               lr_conscell->car = data_to_element( <line> ).
+             endloop.
+             lr_conscell->cdr = nil. "Terminate list
+           endif.
+
+* Structure
+         when cl_abap_typedescr=>kind_struct.
+           create object element
+             exporting
+               type = lcl_lisp_element=>type_conscell.
+           lr_conscell = element.
+           do.
+             assign component sy-index of structure data to <field>.
+             if sy-subrc ne 0.
+               lr_conscell->cdr = nil. "Terminate list
+               exit.
+             endif.
+             if sy-index > 1. "Move pointer only from second field onward
+               create object lr_conscell->cdr
+                 exporting
+                   type = lcl_lisp_element=>type_conscell.
+               lr_conscell = lr_conscell->cdr.
+             endif.
+             lr_conscell->car = data_to_element( <field> ).
+           enddo.
+
+* Elementary type
+         when cl_abap_typedescr=>kind_elem.
+           if lr_ddesc->type_kind = cl_abap_typedescr=>typekind_numeric or
+              lr_ddesc->type_kind = cl_abap_typedescr=>typekind_num.
+             create object element
+               exporting
+                 type = lcl_lisp_element=>type_number.
+             element->number = data.
+           else.
+             create object element
+               exporting
+                 type = lcl_lisp_element=>type_string.
+             element->value = data.
+           endif.
+       endcase.
+     endmethod.                    "data_to_element
+*--------------------------------------------------------------------*
+* Map Lisp element to ABAP Data
+     method element_to_data.
+* RTTI-relevant:
+       data: lr_ddesc type ref to cl_abap_typedescr.
+       data: lr_tdesc type ref to cl_abap_tabledescr.
+* ABAP-side (target) mapping:
+       field-symbols: <field> type any.
+       field-symbols: <line> type any.
+       field-symbols: <table> type any table.
+       field-symbols: <sotab> type sorted table.
+       field-symbols: <sttab> type standard table.
+       data: field type ref to data.
+       data: line type ref to data.
+       data: table type ref to data.
+* Lisp-side (source) mapping:
+       data: lr_conscell type ref to lcl_lisp_element.
+
+* Determine type of the ABAP value
+       lr_ddesc = cl_abap_typedescr=>describe_by_data( data ).
+       case lr_ddesc->kind.
+
+* Table type
+         when cl_abap_typedescr=>kind_table.
+* For this mapping to happen, the element must be a cons cell
+           if element->type ne lcl_lisp_element=>type_conscell.
+             eval_err( 'Mapping failed: Non-cell to table' ).
+           endif.
+* Provide reference to table and line
+           lr_tdesc ?= lr_ddesc.
+           get reference of data into table.
+           assign table->* to <table>.
+           if lr_tdesc->table_kind = cl_abap_tabledescr=>tablekind_sorted or
+              lr_tdesc->table_kind = cl_abap_tabledescr=>tablekind_hashed.
+             assign table->* to <sotab>. "Sorted table type
+             create data line like line of <sotab>.
+             assign line->* to <line>.
+           else.
+             assign table->* to <sttab>. "Standard table type
+             create data line like line of <sttab>.
+             assign line->* to <line>.
+           endif.
+
+           lr_conscell = element. "Set pointer to start of list
+           do.
+             call method element_to_data
+               exporting
+                 element = lr_conscell->car
+               changing
+                 data    = <line>.
+* Append or insert, depending on table type (what is assigned)
+             if <sotab> is assigned.
+               insert <line> into table <sotab>.
+             else.
+               append <line> to <sttab>.
+             endif.
+             clear <line>.
+             lr_conscell = lr_conscell->cdr.
+             if lr_conscell = nil.
+               exit.
+             endif.
+           enddo.
+
+* Structure
+         when cl_abap_typedescr=>kind_struct.
+           if element->type ne lcl_lisp_element=>type_conscell.
+             eval_err( 'Mapping failed: Non-cell to structure' ).
+           endif.
+
+           lr_conscell = element. "Set pointer to start of list
+           assign data to <line>.
+           do.
+             assign component sy-index of structure <line> to <field>.
+             if sy-subrc ne 0.
+               exit.
+             endif.
+
+             if sy-index > 1. "Move cons cell pointer only from second element on
+               lr_conscell = lr_conscell->cdr.
+             endif.
+* Don't map nil values
+             if lr_conscell->car = nil.
+               continue.
+             endif.
+
+             call method element_to_data
+               exporting
+                 element = lr_conscell->car
+               changing
+                 data    = <field>.
+           enddo.
+
+* Elementary type
+         when cl_abap_typedescr=>kind_elem.
+           assign data to <field>.
+           if element->type = lcl_lisp_element=>type_number.
+             <field> = element->number.
+           else.
+             <field> = element->value.
+           endif.
+         when others.
+* Not supported yet
+           eval_err( |Mapping failed: unsupported type| ).
+       endcase.
+     endmethod.                    "element_to_data
+
    endclass.                    "lcl_lisp_interpreter IMPLEMENTATION

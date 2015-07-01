@@ -46,6 +46,7 @@ parameter: p_compa as checkbox default space. "Comparison tests
 parameter: p_listp as checkbox default space. "List tests
 parameter: p_func1 as checkbox default space. "Basic functions
 parameter: p_funct as checkbox default space. "Functional tests
+parameter: p_abapi as checkbox default space. "ABAP Integration
 parameter: p_abapf as checkbox default space. "ABAP function module integration tests
 
 *&---------------------------------------------------------------------*
@@ -297,11 +298,26 @@ start-of-selection.
     perform code_test using '(riff-shuffle (list 1 2 3 4 5 6 7 8))'.
     perform code_test using '((repeat riff-shuffle) (list 1 2 3 4 5 6 7 8))'.
     perform code_test using '(riff-shuffle (riff-shuffle (riff-shuffle (list 1 2 3 4 5 6 7 8))))'.
-
+* FIXME: We are not passing this test:
+* http://docs.racket-lang.org/guide/define.html shows that define function shorthand can take multiple expressions for body - workaround is using BEGIN, I suppose
+    perform code_test using '((define (fact x) (define (fact-tail x accum) (if (= x 0) accum (fact-tail (- x 1) (* x accum)))) (fact-tail x 1)))'.
+    perform code_test using '(fact 8)'. "FIXME: returns fact-tail
   endif.
 
 *--------------------------------------------------------------------*
 * ABAP INTEGRATION
+  if p_abapi = abap_true.
+    perform code_test using '(define mandt (ab-data "MANDT"))'.
+    perform code_test using '(ab-set-value mandt "000")'.
+    perform code_test using 'mandt'.
+* Empty structure
+    perform code_test using '(define t005g (ab-data "T005G"))'.
+    perform code_test using '(ab-set-value t005g ''("000" "ZA" "ABC" "JHB"))'.
+    perform code_test using '(ab-get-value t005g)'.
+  endif.
+
+*--------------------------------------------------------------------*
+* ABAP FUNCTION MODULE INTEGRATION
   if p_abapf = abap_true.
     perform code_test using '(abap-function "TH_USER_INFO")'.
     perform code_test using '(define f1 (abap-function "TH_USER_INFO"))'.
