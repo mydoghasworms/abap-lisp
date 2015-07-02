@@ -121,6 +121,7 @@
        class-data: type_conscell   type tv_type value 'C'.
        class-data: type_lambda     type tv_type value 'λ'.
        class-data: type_native     type tv_type value 'P'.
+       class-data: type_hash       type tv_type value 'H'.
 * Types for ABAP integration:
        class-data: type_abap_data     type tv_type value 'D'.
        class-data: type_abap_table    type tv_type value 'T'.
@@ -143,6 +144,23 @@
        methods: constructor importing type type tv_type.
 
    endclass.                    "lcl_lisp_element DEFINITION
+
+
+*----------------------------------------------------------------------*
+*       CLASS lcl_lisp_hash DEFINITION
+*----------------------------------------------------------------------*
+* Hash is a specialized ABAP Lisp type for quick lookup of elements
+* using a symbol or string key (backed by an ABAP hash table)
+*----------------------------------------------------------------------*
+   class lcl_lisp_hash definition inheriting from lcl_lisp_element.
+     public section.
+       types: begin of ts_hash,
+                key type string,
+                element type ref to lcl_lisp_element,
+              end of ts_hash.
+       types: tt_hash type hashed table of ts_hash with unique key key.
+       data: hash type tt_hash.
+   endclass.                    "lcl_lisp_abapfunction DEFINITION
 
 *----------------------------------------------------------------------*
 *       CLASS lcl_lisp_abapfunction DEFINITION
@@ -331,6 +349,13 @@
        proc_eql,      ##called
 * Not in the spec: Just adding it anyway
        proc_equal.    ##called
+* Functions for dealing with hashes:
+       _proc_meth:
+       proc_make_hash,    ##called "Create new hash
+       proc_hash_get,     ##called "Get an element from a hash
+       proc_hash_insert,  ##called "Insert a new element into a hash
+       proc_hash_remove,  ##called "Delete an item from a hash
+       proc_hash_keys.    ##called "Delete an item from a hash
 
 * Built-in functions for ABAP integration:
        _proc_meth:
@@ -398,6 +423,12 @@
        env->define_value( symbol = '<='     type = lcl_lisp_element=>type_native value   = 'PROC_LTE' ).
        env->define_value( symbol = '='      type = lcl_lisp_element=>type_native value   = 'PROC_EQL' ). "Math equal
        env->define_value( symbol = 'equal?' type = lcl_lisp_element=>type_native value   = 'PROC_EQUAL' ).
+* Hash-related functions
+       env->define_value( symbol = 'make-hash'   type = lcl_lisp_element=>type_native value   = 'PROC_MAKE_HASH' ).
+       env->define_value( symbol = 'hash-get'    type = lcl_lisp_element=>type_native value   = 'PROC_HASH_GET' ).
+       env->define_value( symbol = 'hash-insert' type = lcl_lisp_element=>type_native value   = 'PROC_HASH_INSERT' ).
+       env->define_value( symbol = 'hash-remove' type = lcl_lisp_element=>type_native value   = 'PROC_HASH_REMOVE' ).
+       env->define_value( symbol = 'hash-keys'   type = lcl_lisp_element=>type_native value   = 'PROC_HASH_KEYS' ).
 
 * Native functions for ABAP integration
        env->define_value( symbol = 'ab-data'       type = lcl_lisp_element=>type_native value   = 'PROC_ABAP_DATA' ).
@@ -802,6 +833,8 @@
              lr_elem = lr_elem->cdr. "Next element in list
            enddo.
            str = |{ str } )|. "Closing paren
+         when lcl_lisp_element=>type_hash.
+           str = '<hash>'.
 *--------------------------------------------------------------------*
 * Additions for ABAP Types:
          when lcl_lisp_element=>type_abap_function.
@@ -1065,6 +1098,111 @@
          endif.
        endif.
      endmethod.                    "proc_equal
+
+*--------------------------------------------------------------------*
+* Hash-related functions
+     method proc_make_hash.
+       data: lr_hash type ref to lcl_lisp_hash.
+       data: lr_ptr type ref to lcl_lisp_element.
+       data: ls_entry type lcl_lisp_hash=>ts_hash.
+       create object lr_hash
+         exporting
+           type = lcl_lisp_element=>type_hash.
+* Can accept a parameter which should be a list of alternating symbols/strings and elements
+       if list->car->type = lcl_lisp_element=>type_conscell.
+         lr_ptr = list->car.
+         do.
+           if lr_ptr->car->type ne lcl_lisp_element=>type_symbol and
+              lr_ptr->car->type ne lcl_lisp_element=>type_string.
+             eval_err( 'MAKE-HASH: Use only symbol or string as a key' ).
+           endif.
+           ls_entry-key = lr_ptr->car->value.
+           if lr_ptr->cdr = nil.
+             exit. "Entry is not added
+           endif.
+           lr_ptr = lr_ptr->cdr. "Move pointer to next cell
+           ls_entry-element = lr_ptr->car.
+           insert ls_entry into table lr_hash->hash.
+           if lr_ptr->cdr = nil.
+             exit. "Entry is not added
+           endif.
+           lr_ptr = lr_ptr->cdr. "Move pointer to next cell
+         enddo.
+       endif.
+       result = lr_hash.
+     endmethod.                    "proc_make_hash
+* Get an element from a hash
+     method proc_hash_get.
+       data: lr_hash type ref to lcl_lisp_hash.
+       data: ls_entry type lcl_lisp_hash=>ts_hash.
+       if list->car->type ne lcl_lisp_element=>type_hash.
+         eval_err( 'HASH-GET only works on hashes' ).
+       endif.
+       lr_hash ?= list->car.
+       if list->cdr->car = nil.
+         eval_err( 'HASH-GET requires a key to access an element' ).
+       endif.
+* TODO: Additional check for key type
+       read table lr_hash->hash into ls_entry
+         with key key = list->cdr->car->value.
+       if sy-subrc = 0.
+         result = ls_entry-element.
+       else.
+         result = nil.
+       endif.
+     endmethod.                    "proc_hash_get
+* Insert an element into a hash
+     method proc_hash_insert.
+       data: lr_hash type ref to lcl_lisp_hash.
+       data: ls_entry type lcl_lisp_hash=>ts_hash.
+       if list->car->type ne lcl_lisp_element=>type_hash.
+         eval_err( 'HASH-INSERT only works on hashes' ).
+       endif.
+       lr_hash ?= list->car.
+* TODO: Check number and type of parameters
+       ls_entry-key = list->cdr->car->value.
+       ls_entry-element = list->cdr->cdr->car.
+       insert ls_entry into table lr_hash->hash.
+* TODO: Should we overwrite existing keys?
+       result = nil.
+     endmethod.                    "proc_hash_insert
+* Remove an element from a hash
+     method proc_hash_remove.
+       data: lr_hash type ref to lcl_lisp_hash.
+       if list->car->type ne lcl_lisp_element=>type_hash.
+         eval_err( 'HASH-REMOVE only works on hashes' ).
+       endif.
+       lr_hash ?= list->car.
+* TODO: Check number and type of parameters
+       delete lr_hash->hash where key = list->cdr->car->value.
+       result = nil.
+     endmethod.                    "proc_hash_delete
+* Return the keys of a hash
+     method proc_hash_keys.
+       data: lr_hash type ref to lcl_lisp_hash.
+       data: ls_entry type lcl_lisp_hash=>ts_hash.
+       data: lr_ptr type ref to lcl_lisp_element.
+       data: lv_tabix type i value 0.
+       if list->car->type ne lcl_lisp_element=>type_hash.
+         eval_err( 'HASH-KEYS only works on hashes' ).
+       endif.
+       lr_hash ?= list->car.
+       if lr_hash->hash is initial.
+         result = nil. return.
+       endif.
+       create object result exporting type = lcl_lisp_element=>type_conscell.
+       lr_ptr = result.
+       loop at lr_hash->hash into ls_entry.
+         add 1 to lv_tabix.
+         if lv_tabix > 1.
+           create object lr_ptr->cdr exporting type = lcl_lisp_element=>type_conscell.
+           lr_ptr = lr_ptr->cdr.
+         endif.
+         create object lr_ptr->car exporting type = lcl_lisp_element=>type_symbol.
+         lr_ptr->car->value = ls_entry-key.
+       endloop.
+       lr_ptr->cdr = nil.
+     endmethod.                    "proc_hash_keys
 
 **********************************************************************
 *       _                   _           _ _ _        _

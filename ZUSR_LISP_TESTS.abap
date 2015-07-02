@@ -46,6 +46,7 @@ parameter: p_compa as checkbox default space. "Comparison tests
 parameter: p_listp as checkbox default space. "List tests
 parameter: p_func1 as checkbox default space. "Basic functions
 parameter: p_funct as checkbox default space. "Functional tests
+parameter: p_hasht as checkbox default space. "Hash element
 parameter: p_abapi as checkbox default space. "ABAP Integration
 parameter: p_abapf as checkbox default space. "ABAP function module integration tests
 
@@ -302,6 +303,20 @@ start-of-selection.
 * http://docs.racket-lang.org/guide/define.html shows that define function shorthand can take multiple expressions for body - workaround is using BEGIN, I suppose
     perform code_test using '((define (fact x) (define (fact-tail x accum) (if (= x 0) accum (fact-tail (- x 1) (* x accum)))) (fact-tail x 1)))'.
     perform code_test using '(fact 8)'. "FIXME: returns fact-tail
+  endif.
+
+*--------------------------------------------------------------------*
+* HASH IMPLEMENTATION
+  if p_hasht = abap_true.
+    perform code_test using '(define h1 (make-hash ''(dog "bow-wow" cat "meow" kennel (dog cat hedgehog))))'.
+    perform code_test using 'h1'.
+    perform code_test using '(hash-keys h1)'.
+    perform code_test using '(hash-get h1 ''kennel)'.
+    perform code_test using '(hash-remove h1 ''kennel)'.
+    perform code_test using '(hash-get h1 ''sparrow)'.
+    perform code_test using '(hash-insert h1 ''sparrow "whoosh")'.
+    perform code_test using '(hash-get h1 ''sparrow)'.
+    perform code_test using '(hash-keys h1)'.
   endif.
 
 *--------------------------------------------------------------------*
