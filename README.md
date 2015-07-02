@@ -8,10 +8,11 @@ The idea is eventually to make it able to consume business functions of an ABAP 
 ## What works now
 
 * Passes the first set of tests at http://norvig.com/lispytest.py
+* A lot of other stuff (check commit history)
 
 ## What is being worked on
 
-* String Types
+* Integration with ABAP data and function modules
 * Development Environment with a REPL
 
 For the story, read http://scn.sap.com/community/abap/blog/2015/06/24/a-lisp-interpreter-in-abap
