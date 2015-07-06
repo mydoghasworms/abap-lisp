@@ -301,7 +301,7 @@ start-of-selection.
     perform code_test using '(riff-shuffle (riff-shuffle (riff-shuffle (list 1 2 3 4 5 6 7 8))))'.
 * FIXME: We are not passing this test:
 * http://docs.racket-lang.org/guide/define.html shows that define function shorthand can take multiple expressions for body - workaround is using BEGIN, I suppose
-    perform code_test using '((define (fact x) (define (fact-tail x accum) (if (= x 0) accum (fact-tail (- x 1) (* x accum)))) (fact-tail x 1)))'.
+    perform code_test using '(define (fact x) (define (fact-tail x accum) (if (= x 0) accum (fact-tail (- x 1) (* x accum)))) (fact-tail x 1))'.
     perform code_test using '(fact 8)'. "FIXME: returns fact-tail
   endif.
 

@@ -643,9 +643,6 @@
 
 *--- DEFINE
            elseif lr_head->value = 'define'.
-*             if lr_tail->car->type ne lcl_lisp_element=>type_symbol.
-*               eval_err( |non-symbol { lr_tail->car->value } cannot be a variable| ).
-*             endif.
 * Assign symbol
              if lr_tail->car->type = lcl_lisp_element=>type_symbol.
                environment->define( symbol  = lr_tail->car->value
@@ -662,7 +659,7 @@
                  exporting
                    type = lcl_lisp_element=>type_lambda.
                result->car = lr_tail->car->cdr. "List of params following function symbol
-               result->cdr = lr_tail->cdr->car.
+               result->cdr = lr_tail->cdr.
                result->environment = environment.
 * Add function to the environment with symbol
                environment->define( symbol  = lr_tail->car->car->value
@@ -684,7 +681,7 @@
                exporting
                  type = lcl_lisp_element=>type_lambda.
              result->car = lr_tail->car.      "List of parameters
-             result->cdr = lr_tail->cdr->car. "Body
+             result->cdr = lr_tail->cdr. "Body
 * Store the reference to the environment in which the lambda was created
 * This is necessary, because if the lambda is created inside another lambda, we want that environment
 * to be present when we evaluate the new lambda
@@ -762,7 +759,6 @@
                data: lr_par type ref to lcl_lisp_element. "Parameter
                data: lr_arg type ref to lcl_lisp_element. "Argument
                lr_par = lr_head->car. "Pointer to formal parameters
-*               lr_arg = lr_tail. "Pointer to arguments
                lr_arg = lr_args. "Pointer to arguments
                if lr_par ne nil. "Nil would mean no parameters to map
                  do.
@@ -779,7 +775,14 @@
                  enddo.
                endif.
 * Evaluate lambda
-               result = eval( element = lr_head->cdr environment = lr_env ).
+             lr_ptr = lr_head->cdr.
+             do.
+               result = eval( element = lr_ptr->car environment = lr_env ).
+               if lr_ptr->cdr = nil.
+                 exit.
+               endif.
+               lr_ptr = lr_ptr->cdr.
+             enddo.
 
 * >>> TEST: Support evaluation of ABAP function directly
              elseif lr_head->type = lcl_lisp_element=>type_abap_function.
