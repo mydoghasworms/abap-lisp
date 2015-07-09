@@ -2,20 +2,21 @@
 
 A Lisp Interpreter written in ABAP.
 
-This is a very basic Lisp interpreter along the lines of http://norvig.com/lispy.html and http://howtowriteaprogram.blogspot.com/2010/11/lisp-interpreter-in-90-lines-of-c.html.
+This is a basic Lisp interpreter along the lines of http://norvig.com/lispy.html and http://howtowriteaprogram.blogspot.com/2010/11/lisp-interpreter-in-90-lines-of-c.html.
 The idea is eventually to make it able to consume business functions of an ABAP application server by consuming classes and function modules.
 
 ## What works now
 
-* Passes the first set of tests at http://norvig.com/lispytest.py
-* A lot of other stuff (check commit history)
+* Basic Lisp functionality
+* Integration with ABAP data
+* Calling ABAP function modules
 
 ## What is being worked on
 
 * Integration with ABAP data and function modules
 * Development Environment with a REPL
 
-For the story, read http://scn.sap.com/community/abap/blog/2015/06/24/a-lisp-interpreter-in-abap
+For the original announcement, read http://scn.sap.com/community/abap/blog/2015/06/24/a-lisp-interpreter-in-abap
 
 ## Installation
 
