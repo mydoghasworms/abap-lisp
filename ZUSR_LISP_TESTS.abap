@@ -299,8 +299,6 @@ start-of-selection.
     perform code_test using '(riff-shuffle (list 1 2 3 4 5 6 7 8))'.
     perform code_test using '((repeat riff-shuffle) (list 1 2 3 4 5 6 7 8))'.
     perform code_test using '(riff-shuffle (riff-shuffle (riff-shuffle (list 1 2 3 4 5 6 7 8))))'.
-* FIXME: We are not passing this test:
-* http://docs.racket-lang.org/guide/define.html shows that define function shorthand can take multiple expressions for body - workaround is using BEGIN, I suppose
     perform code_test using '(define (fact x) (define (fact-tail x accum) (if (= x 0) accum (fact-tail (- x 1) (* x accum)))) (fact-tail x 1))'.
     perform code_test using '(fact 8)'. "FIXME: returns fact-tail
   endif.
@@ -329,12 +327,26 @@ start-of-selection.
     perform code_test using '(define t005g (ab-data "T005G"))'.
     perform code_test using '(ab-set-value t005g ''("000" "ZA" "ABC" "JHB"))'.
     perform code_test using '(ab-get-value t005g)'.
+    perform code_test using '(ab-get t005g "LAND1")'.
+    perform code_test using '(ab-get ab-sy "UNAME")'.
   endif.
 
 *--------------------------------------------------------------------*
 * ABAP FUNCTION MODULE INTEGRATION
   if p_abapf = abap_true.
-    perform code_test using '(abap-function "TH_USER_INFO")'.
-    perform code_test using '(define f1 (abap-function "TH_USER_INFO"))'.
+    perform code_test using '(ab-function "TH_USER_INFO")'.
+    perform code_test using '(define f1 (ab-function "TH_USER_INFO"))'.
     perform code_test using '(f1)'.
+    perform code_test using '(ab-get f1 "ADDRSTR")'.
+    perform code_test using '(define f2 (ab-function "TH_TEST_RFC"))'.
+    perform code_test using '(ab-set f2 "TEXT_IN" "Calling from ABAP Lisp")'.
+    perform code_test using '(f2)'.
+    perform code_test using '(ab-get f2 "TEXT_OUT")'.
+    perform code_test using '(define f3 (ab-function "BAPI_USER_GET_DETAIL"))'.
+    perform code_test using '(ab-set f3 "USERNAME" (ab-get ab-sy "UNAME"))'.
+    perform code_test using '(f3)'.
+    perform code_test using '(define profiles (ab-get f3 "PROFILES"))'.
+    perform code_test using 'profiles'.
+    perform code_test using '(define profile (ab-get profiles 1))'.
+    perform code_test using '(ab-get profile "BAPIPROF")'.
   endif.
